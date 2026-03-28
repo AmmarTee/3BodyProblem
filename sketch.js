@@ -33,6 +33,11 @@ let bodyOscillators = [];
 let proximityGains = [];  // gain nodes for each pair
 let proximityOscs = [];   // oscillators for each pair
 
+// --- Recording ---
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
+
 const BASE_FREQS = [55, 73.4, 98];  // base tones per body (A1, D2, G2)
 const PAIR_FREQS = [36, 42, 30];     // sub-bass rumble per pair
 
@@ -328,7 +333,7 @@ function drawHUD() {
   text(`Energy: ${(KE + PE).toFixed(1)}  (KE: ${KE.toFixed(1)}  PE: ${PE.toFixed(1)})`, 30, yOff + 10);
 
   // Controls
-  let ctrlY = height - 130;
+  let ctrlY = height - 155;
   fill(255, 255, 255, 60);
   textSize(11);
   textAlign(LEFT, BOTTOM);
@@ -339,6 +344,19 @@ function drawHUD() {
   text("[G] Toggle grid", 30, ctrlY + 72);
   text(`[M] Sound: ${sfxEnabled ? "ON" : "OFF"}`, 30, ctrlY + 90);
   text(`[+/-] Speed: ${speedMultiplier}x`, 30, ctrlY + 108);
+  text(`[V] Record: ${isRecording ? "REC" : "OFF"}`, 30, ctrlY + 126);
+
+  // Recording indicator
+  if (isRecording) {
+    textAlign(RIGHT, TOP);
+    let pulse = 200 + Math.sin(frameCount * 0.1) * 55;
+    fill(255, 40, 40, pulse);
+    noStroke();
+    ellipse(width - 35, 30, 14, 14);
+    fill(255, 255, 255, 180);
+    textSize(13);
+    text("REC", width - 48, 22);
+  }
 
   if (paused) {
     textAlign(CENTER, CENTER);
@@ -346,6 +364,39 @@ function drawHUD() {
     fill(255, 255, 255, 150);
     text("PAUSED", width / 2, height / 2);
   }
+}
+
+// ============================================================
+//  Recording (MediaRecorder API)
+// ============================================================
+function startRecording() {
+  let stream = document.querySelector('canvas').captureStream(60);
+  mediaRecorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp9',
+    videoBitsPerSecond: 8000000
+  });
+  recordedChunks = [];
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.onstop = () => {
+    let blob = new Blob(recordedChunks, { type: 'video/webm' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url;
+    a.download = `3BodyProblem_${PRESETS[currentPreset].name.replace(/\s+/g, '_')}_${Date.now()}.webm`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  mediaRecorder.start();
+  isRecording = true;
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  isRecording = false;
 }
 
 // ============================================================
@@ -599,6 +650,10 @@ function keyPressed() {
   }
   if (key === "=" || key === "+") speedMultiplier = min(speedMultiplier * 2, 4);
   if (key === "-" || key === "_") speedMultiplier = max(speedMultiplier / 2, 0.25);
+  if (key === "v" || key === "V") {
+    if (isRecording) stopRecording();
+    else startRecording();
+  }
   if (key >= "1" && key <= "5") loadPreset(int(key) - 1);
 }
 
