@@ -22,6 +22,19 @@ let time = 0;
 let paused = false;
 let cam = { x: 0, y: 0, zoom: 1, targetZoom: 1 };
 
+// --- Audio ---
+let audioCtx = null;
+let sfxEnabled = true;
+let audioStarted = false;
+let masterGain = null;
+let ambientDrone = null;
+let bodyOscillators = [];
+let proximityGains = [];  // gain nodes for each pair
+let proximityOscs = [];   // oscillators for each pair
+
+const BASE_FREQS = [55, 73.4, 98];  // base tones per body (A1, D2, G2)
+const PAIR_FREQS = [36, 42, 30];     // sub-bass rumble per pair
+
 // --- Presets ---
 const PRESETS = [
   {
@@ -323,6 +336,7 @@ function drawHUD() {
   text("[1-5] Switch preset", 30, ctrlY + 36);
   text("[T] Toggle trails", 30, ctrlY + 54);
   text("[G] Toggle grid", 30, ctrlY + 72);
+  text(`[M] Sound: ${sfxEnabled ? "ON" : "OFF"}`, 30, ctrlY + 90);
 
   if (paused) {
     textAlign(CENTER, CENTER);
@@ -330,6 +344,170 @@ function drawHUD() {
     fill(255, 255, 255, 150);
     text("PAUSED", width / 2, height / 2);
   }
+}
+
+// ============================================================
+//  Audio System (Web Audio API – procedural)
+// ============================================================
+function initAudio() {
+  if (audioStarted) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  audioStarted = true;
+
+  // Master volume
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.35;
+  masterGain.connect(audioCtx.destination);
+
+  // --- Ambient space drone (layered) ---
+  ambientDrone = createDrone();
+
+  // --- Per-body singing oscillators (velocity-mapped) ---
+  bodyOscillators = [];
+  for (let i = 0; i < 3; i++) {
+    let osc = audioCtx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = BASE_FREQS[i];
+    let g = audioCtx.createGain();
+    g.gain.value = 0;
+    let filter = audioCtx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 400;
+    filter.Q.value = 3;
+    osc.connect(filter);
+    filter.connect(g);
+    g.connect(masterGain);
+    osc.start();
+    bodyOscillators.push({ osc, gain: g, filter });
+  }
+
+  // --- Proximity rumble (one per body pair) ---
+  proximityOscs = [];
+  proximityGains = [];
+  for (let p = 0; p < 3; p++) {
+    let osc = audioCtx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = PAIR_FREQS[p];
+    let g = audioCtx.createGain();
+    g.gain.value = 0;
+    let filter = audioCtx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.value = 120;
+    filter.Q.value = 6;
+    osc.connect(filter);
+    filter.connect(g);
+    g.connect(masterGain);
+    osc.start();
+    proximityOscs.push(osc);
+    proximityGains.push(g);
+  }
+}
+
+function createDrone() {
+  // Layered ambient drone: two detuned saws through heavy LP filter + reverb-like delay
+  let nodes = [];
+  let droneGain = audioCtx.createGain();
+  droneGain.gain.value = 0.08;
+
+  let filter = audioCtx.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.value = 180;
+  filter.Q.value = 1;
+  filter.connect(droneGain);
+  droneGain.connect(masterGain);
+
+  [32, 32.2, 48, 64.1].forEach((freq) => {
+    let osc = audioCtx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = freq;
+    osc.connect(filter);
+    osc.start();
+    nodes.push(osc);
+  });
+
+  // Slow LFO modulating drone filter cutoff
+  let lfo = audioCtx.createOscillator();
+  lfo.type = "sine";
+  lfo.frequency.value = 0.07;
+  let lfoGain = audioCtx.createGain();
+  lfoGain.gain.value = 60;
+  lfo.connect(lfoGain);
+  lfoGain.connect(filter.frequency);
+  lfo.start();
+
+  return { nodes, filter, droneGain, lfo };
+}
+
+function updateAudio() {
+  if (!audioStarted || !sfxEnabled || paused) return;
+  let now = audioCtx.currentTime;
+
+  // Per-body oscillator: pitch & volume from velocity
+  for (let i = 0; i < Math.min(bodies.length, 3); i++) {
+    let b = bodies[i];
+    let speed = b.vel.mag();
+    // Map speed to volume (0..1.5 -> 0..0.12)
+    let vol = constrain(map(speed, 0, 1.5, 0, 0.12), 0, 0.12);
+    bodyOscillators[i].gain.gain.linearRampToValueAtTime(vol, now + 0.05);
+    // Slight pitch shift with speed
+    let freq = BASE_FREQS[i] + speed * 30;
+    bodyOscillators[i].osc.frequency.linearRampToValueAtTime(freq, now + 0.05);
+    // Open filter with speed
+    let cutoff = 200 + speed * 400;
+    bodyOscillators[i].filter.frequency.linearRampToValueAtTime(cutoff, now + 0.05);
+  }
+
+  // Proximity rumble: louder when two bodies are closer
+  let pairIdx = 0;
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      if (pairIdx >= 3) break;
+      let d = p5.Vector.dist(bodies[i].pos, bodies[j].pos);
+      // Close range = < 150px, far = > 500px
+      let vol = constrain(map(d, 40, 400, 0.2, 0), 0, 0.2);
+      proximityGains[pairIdx].gain.linearRampToValueAtTime(vol, now + 0.05);
+      // Pitch rises as they get closer
+      let freq = PAIR_FREQS[pairIdx] + constrain(map(d, 40, 400, 40, 0), 0, 40);
+      proximityOscs[pairIdx].frequency.linearRampToValueAtTime(freq, now + 0.05);
+      pairIdx++;
+    }
+  }
+}
+
+function playImpact() {
+  // Short percussive "boom" on preset switch / reset
+  if (!audioStarted || !sfxEnabled) return;
+  let now = audioCtx.currentTime;
+  let osc = audioCtx.createOscillator();
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(80, now);
+  osc.frequency.exponentialRampToValueAtTime(25, now + 0.4);
+  let g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.3, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+  osc.connect(g);
+  g.connect(masterGain);
+  osc.start(now);
+  osc.stop(now + 0.5);
+
+  // Noise burst layer
+  let bufferSize = audioCtx.sampleRate * 0.15;
+  let noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  let data = noiseBuffer.getChannelData(0);
+  for (let s = 0; s < bufferSize; s++) data[s] = (Math.random() * 2 - 1) * 0.5;
+  let noise = audioCtx.createBufferSource();
+  noise.buffer = noiseBuffer;
+  let nf = audioCtx.createBiquadFilter();
+  nf.type = "lowpass";
+  nf.frequency.value = 200;
+  let ng = audioCtx.createGain();
+  ng.gain.setValueAtTime(0.15, now);
+  ng.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+  noise.connect(nf);
+  nf.connect(ng);
+  ng.connect(masterGain);
+  noise.start(now);
+  noise.stop(now + 0.2);
 }
 
 // ============================================================
@@ -362,6 +540,9 @@ function loadPreset(index) {
   cam.y = 0;
   cam.zoom = 1;
   cam.targetZoom = 1;
+
+  // Impact sound on load
+  playImpact();
 }
 
 function draw() {
@@ -369,6 +550,7 @@ function draw() {
 
   if (!paused) {
     simulate();
+    updateAudio();
   }
 
   updateCamera();
@@ -400,11 +582,23 @@ function draw() {
 //  Input
 // ============================================================
 function keyPressed() {
+  // First interaction starts audio (browser autoplay policy)
+  if (!audioStarted) initAudio();
+
   if (key === " ") paused = !paused;
   if (key === "r" || key === "R") loadPreset(currentPreset);
   if (key === "t" || key === "T") showTrails = !showTrails;
   if (key === "g" || key === "G") showGrid = !showGrid;
+  if (key === "m" || key === "M") {
+    sfxEnabled = !sfxEnabled;
+    if (masterGain) masterGain.gain.value = sfxEnabled ? 0.35 : 0;
+  }
   if (key >= "1" && key <= "5") loadPreset(int(key) - 1);
+}
+
+function mousePressed() {
+  // Also start audio on mouse click (autoplay policy)
+  if (!audioStarted) initAudio();
 }
 
 function windowResized() {
