@@ -8,6 +8,7 @@ const G = 2.5;               // gravitational constant (tuned for visuals)
 const DT = 0.3;              // time-step per frame
 const SOFTENING = 8;         // softening length to avoid singularities
 const TRAIL_LEN = 600;       // max trail points per body
+let speedMultiplier = 1;      // simulation speed (0.25x - 4x)
 const SUB_STEPS = 6;         // integration sub-steps per frame for accuracy
 
 // --- Visual knobs ---
@@ -327,7 +328,7 @@ function drawHUD() {
   text(`Energy: ${(KE + PE).toFixed(1)}  (KE: ${KE.toFixed(1)}  PE: ${PE.toFixed(1)})`, 30, yOff + 10);
 
   // Controls
-  let ctrlY = height - 100;
+  let ctrlY = height - 130;
   fill(255, 255, 255, 60);
   textSize(11);
   textAlign(LEFT, BOTTOM);
@@ -337,6 +338,7 @@ function drawHUD() {
   text("[T] Toggle trails", 30, ctrlY + 54);
   text("[G] Toggle grid", 30, ctrlY + 72);
   text(`[M] Sound: ${sfxEnabled ? "ON" : "OFF"}`, 30, ctrlY + 90);
+  text(`[+/-] Speed: ${speedMultiplier}x`, 30, ctrlY + 108);
 
   if (paused) {
     textAlign(CENTER, CENTER);
@@ -549,7 +551,9 @@ function draw() {
   background(5, 5, 15);
 
   if (!paused) {
-    simulate();
+    for (let i = 0; i < speedMultiplier; i++) {
+      simulate();
+    }
     updateAudio();
   }
 
@@ -593,6 +597,8 @@ function keyPressed() {
     sfxEnabled = !sfxEnabled;
     if (masterGain) masterGain.gain.value = sfxEnabled ? 0.35 : 0;
   }
+  if (key === "=" || key === "+") speedMultiplier = min(speedMultiplier * 2, 4);
+  if (key === "-" || key === "_") speedMultiplier = max(speedMultiplier / 2, 0.25);
   if (key >= "1" && key <= "5") loadPreset(int(key) - 1);
 }
 
