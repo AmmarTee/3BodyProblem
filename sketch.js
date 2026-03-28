@@ -4,12 +4,12 @@
 // ============================================================
 
 // --- Simulation constants ---
-const G = 2.5;               // gravitational constant (tuned for visuals)
-const DT = 0.3;              // time-step per frame
-const SOFTENING = 8;         // softening length to avoid singularities
+const G = 8;                 // gravitational constant (tuned for dynamic visuals)
+const DT = 0.5;              // time-step per frame
+const SOFTENING = 10;        // softening length to avoid singularities
 const TRAIL_LEN = 600;       // max trail points per body
 let speedMultiplier = 1;      // simulation speed (0.25x - 4x)
-const SUB_STEPS = 6;         // integration sub-steps per frame for accuracy
+const SUB_STEPS = 12;        // integration sub-steps per frame for accuracy
 
 // --- Visual knobs ---
 const BODY_GLOW_LAYERS = 6;
@@ -46,41 +46,41 @@ const PRESETS = [
   {
     name: "Figure-Eight",
     bodies: [
-      { x: -120, y: 0, vx: 0, vy: -0.78, m: 120, col: [255, 100, 60] },
-      { x: 120, y: 0, vx: 0, vy: 0.78, m: 120, col: [60, 160, 255] },
+      { x: -120, y: 0, vx: 0, vy: -1.8, m: 120, col: [255, 100, 60] },
+      { x: 120, y: 0, vx: 0, vy: 1.8, m: 120, col: [60, 160, 255] },
       { x: 0, y: 0, vx: 0, vy: 0, m: 120, col: [120, 255, 120] },
     ],
   },
   {
     name: "Lagrange Triangle",
     bodies: [
-      { x: 0, y: -140, vx: 1.0, vy: 0.4, m: 150, col: [255, 200, 50] },
-      { x: -121, y: 70, vx: -0.3, vy: -1.0, m: 150, col: [50, 200, 255] },
-      { x: 121, y: 70, vx: -0.7, vy: 0.6, m: 150, col: [255, 80, 180] },
+      { x: 0, y: -140, vx: 2.2, vy: 0.8, m: 150, col: [255, 200, 50] },
+      { x: -121, y: 70, vx: -0.6, vy: -2.0, m: 150, col: [50, 200, 255] },
+      { x: 121, y: 70, vx: -1.6, vy: 1.2, m: 150, col: [255, 80, 180] },
     ],
   },
   {
     name: "Chaotic Dance",
     bodies: [
-      { x: -200, y: 50, vx: 0.2, vy: -0.6, m: 200, col: [255, 70, 70] },
-      { x: 100, y: -150, vx: -0.5, vy: 0.3, m: 140, col: [70, 130, 255] },
-      { x: 80, y: 160, vx: 0.3, vy: 0.3, m: 100, col: [100, 255, 180] },
+      { x: -180, y: 50, vx: 0.5, vy: -1.5, m: 180, col: [255, 70, 70] },
+      { x: 100, y: -130, vx: -1.2, vy: 0.7, m: 140, col: [70, 130, 255] },
+      { x: 80, y: 140, vx: 0.7, vy: 0.8, m: 120, col: [100, 255, 180] },
     ],
   },
   {
     name: "Binary + Satellite",
     bodies: [
-      { x: -80, y: 0, vx: 0, vy: -1.0, m: 200, col: [255, 160, 40] },
-      { x: 80, y: 0, vx: 0, vy: 1.0, m: 200, col: [100, 180, 255] },
-      { x: 300, y: 0, vx: 0, vy: 1.2, m: 30, col: [200, 200, 200] },
+      { x: -80, y: 0, vx: 0, vy: -2.2, m: 200, col: [255, 160, 40] },
+      { x: 80, y: 0, vx: 0, vy: 2.2, m: 200, col: [100, 180, 255] },
+      { x: 280, y: 0, vx: 0, vy: 2.8, m: 30, col: [200, 200, 200] },
     ],
   },
   {
     name: "Slingshot",
     bodies: [
       { x: 0, y: 0, vx: 0, vy: 0, m: 300, col: [255, 220, 80] },
-      { x: -250, y: -50, vx: 0.6, vy: 0.9, m: 80, col: [80, 200, 255] },
-      { x: 200, y: 100, vx: -0.4, vy: -0.5, m: 60, col: [255, 100, 200] },
+      { x: -220, y: -50, vx: 1.4, vy: 2.0, m: 80, col: [80, 200, 255] },
+      { x: 180, y: 80, vx: -1.0, vy: -1.2, m: 60, col: [255, 100, 200] },
     ],
   },
 ];
